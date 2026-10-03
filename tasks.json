@@ -1,0 +1,37 @@
+[
+    {
+        "id": 1791052678,
+        "description": "lavar a louça",
+        "status": "todo",
+        "createdAt": "03\/10\/2026 18:37:58",
+        "updateAt": "03\/10\/2026 18:37:58"
+    },
+    {
+        "id": 1791052727,
+        "description": "limpar o chão",
+        "status": "in-progress",
+        "createdAt": "03\/10\/2026 18:38:47",
+        "updateAt": "03\/10\/2026 18:38:47"
+    },
+    {
+        "id": 1791056175,
+        "description": "cozinhar",
+        "status": "todo",
+        "createdAt": "03\/10\/2026 19:36:15",
+        "updateAt": "03\/10\/2026 19:36:15"
+    },
+    {
+        "id": 1791056181,
+        "description": "banhar",
+        "status": "todo",
+        "createdAt": "03\/10\/2026 19:36:21",
+        "updateAt": "03\/10\/2026 19:36:21"
+    },
+    {
+        "id": 1791056194,
+        "description": "lavar",
+        "status": "done",
+        "createdAt": "03\/10\/2026 19:36:34",
+        "updateAt": "03\/10\/2026 19:36:34"
+    }
+]
