@@ -1,83 +1,111 @@
 <?php
 
-    $ficheiro = "tasks.json";
-    $argv[1] = strtolower($argv[1]);
+    declare(strict_types=1); // tipagem estrita
+    const FICHEIRO = "tasks.json"; // nome do ficheiro
+    $argv1 = isset($argv[1]) ? strtolower($argv[1]) : null; // se o argv1 estiver definido converta para minusculas
+    $argv2 = $argv[2] ?? null; //se a esquerda não existir argv2 recebe null
+    $argv3 = $argv[3] ?? null;
 
-    //Menu do Todo List
-    switch($argv[1]) {
-        case "add":
-            add($ficheiro, $argv[2]);
-            break;
-        case "update":
-            echo "Actualizando tarefa...\n";
-            actualizarNome($ficheiro, $argv[1], $argv[2], $argv[3]);
-            break;
-        case "delete":
-            echo "Deletando a tarefa...";
-            apagar($ficheiro, $argv[2]);
-            break;
-        case "mark-todo":
-            echo "Actualizando o status da tarefa para todo...";
-            markAs($ficheiro, $argv[1], $argv[2], "todo");
-            break;
-        case "mark-in-progress":
-            echo "Actualizando o status da tarefa para in-progress...";
-            markAs($ficheiro, $argv[1], $argv[2], "in-progress");
-            break;
-        case "mark-done":
-            echo "Actualizando o status da tarefa para done...\n";
-            markAs($ficheiro, $argv[1], $argv[2], "done");
-            break;
-        case "list-all":
-            echo "Lista de todas as tarefas";
-            listarTodasAsTarefas($ficheiro);
-            break;
-        case "list-done":
-            echo "Lista das tarefas realizadas";
-            listarTodasAsConcluidas($ficheiro);
-            break;
-        case "list-in-progress":
-            echo "Lista de tarefas em andamento:\n";
-            listarTodasEmProgresso($ficheiro);
-            break;
-        default:
-            echo "Não há nada por fazer!";
+    // Verificar se o Id é valido e fazer a conversão
+    function lerId(?string $id): int {
+        if($id === null || !ctype_digit($id) || (int)$id < 1){
+            throw new InvalidArgumentException("ID inválido: indica um numero posetivo.");
+        }
+        return (int)$id;
+    }   
+
+    //truncar o texto e verificar se é válido
+    function lerTexto(?string $texto): string{
+        $texto = trim($texto ?? '');
+        if ($texto === ''){
+            throw new InvalidArgumentException("O campo não pode ser vazio.");
+        }
+        return $texto;
     }
+    try{    
+        //Menu do Todo List
+        switch($argv1) {
+            case "add":
+                add(lerTexto($argv2));
+                break;
+            case "update":
+                actualizarNome(lerId($argv2), lerTexto($argv3));
+                break;
+            case "delete":
+                apagar(lerId($argv2));
+                break;
+            case "mark-todo":
+            case "mark-in-progress":
+            case "mark-done":
+                markAs(lerId($argv2), substr($argv1, 5));
+                break;
+            case "list-all":
+                echo "Lista de todas as tarefas";
+                listarTodasAsTarefas();
+                break;
+            case "list-done":
+            case "list-in-progress":
+                listTasks(mb_substr($argv1, 5));
+                break;
+            default:
+                throw new InvalidArgumentException("Comando inválido");
+            }
+        }catch (InvalidArgumentException $e) {
+            fwrite(STDERR, "Erro: " . $e->getMessage() . PHP_EOL);
+            exit(2);
+        }catch(RuntimeException $e){
+            fwrite(STDERR, "Erro: " . $e->getMessage() . PHP_EOL);
+            exit(1);
+        }
+    
 
     // Ler a lista de tarefas usando o file_exist
     // file_get_contents e o json encode
-    function readTasks(string $ficheiro){
-        if(!file_exists($ficheiro)){
-            echo "Ficheiro inexistente";
-            return [];
+    function readTasks(): ?array {
+        if(!file_exists(FICHEIRO)){ return []; }
+
+        $tarefas = file_get_contents(FICHEIRO);
+        if ($tarefas === false){
+            throw new RuntimeException("Não foi possivel ler" . FICHEIRO);
         }
-        $tarefas = file_get_contents($ficheiro);
-        return json_decode($tarefas, true) ? : [];
+        try{
+            $listaDeTarefas = json_decode($tarefas, true, 512, JSON_THROW_ON_ERROR );
+        }catch (JsonException $e){
+            throw new RuntimeException("JSON inválido: " . $e->getMessage());
+        }
+        return is_array($listaDeTarefas) ?  $listaDeTarefas : [];
     }
+
     //Persistência dos dados com JSON
-    function save(string $ficheiro, array $tarefas){
-        //Remover a numeração das chaves
-        $tarefasLimpas = array_values($tarefas);
-        $jsonString = json_encode($tarefasLimpas, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        file_put_contents($ficheiro, $jsonString);
+    function save(array $tarefas):void {
+        
+        try {    
+            $json = json_encode(array_values($tarefas), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);//Remover a numeração das chaves            
+        }catch(JsonException $e){
+            throw new RuntimeException("Não foi possivel codificar as tarefas: " . $e->getMessage());
+        }
+        if(file_put_contents(FICHEIRO, $json, LOCK_EX) === false){
+            throw new RuntimeException("Não foi possivel gravar" . FICHEIRO);
+        }   
     }
     //Adicionar uma tarefa
-    function add(string $ficheiro, string $novaTarefaNome){
-        $tarefas = readTasks($ficheiro);
+    function add(string $novaTarefaNome): void{
+        $tarefas = readTasks();
         $novaTarefa = [
-            "id" => time(),
+            //Gerar ids sequenciais
+            "id" => (!empty($tarefas) && is_array($tarefas)) ? max(array_column($tarefas, 'id')) + 1 : 1,
             "description" => $novaTarefaNome,
             "status" => "todo",
-            //Gerar um id usando a função time();
-            "createdAt" => date('d/m/Y H:i:s', time()),
-            "updateAt" => date('d/m/Y H:i:s', time())
+            "createdAt" => date('d/m/Y H:i:s'),
+            "updatedAt" => date('d/m/Y H:i:s')
         ];
         $tarefas[] = $novaTarefa;
-        save($ficheiro, $tarefas);
+        save($tarefas);
+        echo "$novaTarefaNome adicionado a Lista de Tarefas\n";
     }
     //Listar todas as tarefas
-    function listarTodasAsTarefas($ficheiro){
-        $tarefas = readTasks($ficheiro);
+    function listarTodasAsTarefas(): void{
+        $tarefas = readTasks();
         foreach ($tarefas as $tarefa){
             foreach($tarefa as  $chave => $valor){
                 echo "$chave: $valor | ";
@@ -87,94 +115,67 @@
     }
 
     //Lista todas as tarefas
-    function listarTodasAsConcluidas($ficheiro){
-        $tarefas = readTasks($ficheiro);
-        foreach ($tarefas as $tarefas){
-            if($tarefas['status'] == "done"){    
-                echo "id: ".$tarefas['id']. "|";
-                echo "description: ".$tarefas['description']. "|";
-                echo "status: ".$tarefas['status']. "|";
-                echo "createdAt: ".$tarefas['createdAt']. "|";
-                echo "updateAt: ".$tarefas['updateAt']. "|";
+    function listTasks(?string $status):void{
+        $tarefas = readTasks();
+        foreach ($tarefas as $tarefa){
+            if($tarefa['status'] === $status){    
+                echo "id: ".$tarefa['id']. "|";
+                echo "description: ".$tarefa['description']. "|";
+                echo "status: ".$tarefa['status']. "|";
+                echo "createdAt: ".$tarefa['createdAt']. "|";
+                echo "updatedAt: ".$tarefa['updatedAt']. "|";
                 echo "\n";}
 
         }
     }
-
-    function listarTodasEmProgresso($ficheiro){
-        $tarefas = readTasks($ficheiro);
-        foreach ($tarefas as $tarefas){
-            if($tarefas['status'] == "in-progress"){    
-                echo "id: ".$tarefas['id']. "|";
-                echo "description: ".$tarefas['description']. "|";
-                echo "status: ".$tarefas['status']. "|";
-                echo "createdAt: ".$tarefas['createdAt']. "|";
-                echo "updateAt: ".$tarefas['updateAt']. "|";
-                echo "\n";
-            }
-
-        }
-    }
-   
     //Actualizar o nome
-    function actualizarNome(string $ficheiro, $str,  $str2, $str3){
-        $tarefas = readTasks($ficheiro);
-        $encontrou = 0;
+    function actualizarNome(int $str2, string $str3):void{
+        $tarefas = readTasks();
         foreach($tarefas as $chave =>$tarefa){
             //Verificação de segurança: garante que o item é mesmo um
             // array antes de testar o id
-            if(is_array($tarefa) && isset($tarefa['id']) && $tarefa['id'] == $str2){
+            if(is_array($tarefa) && isset($tarefa['id']) && $tarefa['id'] === $str2){
                 // Alterar o valor na lista principal
                 $tarefas[$chave]['description'] = $str3;
-                $tarefas[$chave]['updateAt'] = date('d/m/Y H:i:s', time());
-                echo "Nome actualizado!\n";
-                $encontrou = 1;
-                break;
+                $tarefas[$chave]['updatedAt'] = date('d/m/Y H:i:s');
+                save($tarefas);
+                echo "Nome da tarefa $str2 actualizado!\n";
+                return;
             }
-        }
-
-        if($encontrou == 1){
-            save($ficheiro, $tarefas);
-        }else{
+        }            
             echo "Nome não encontrado\n";
-        }
     }
 
-    function markAs(string $ficheiro, $str, $str2, $str3){
-        $tarefas = readTasks($ficheiro);
-        $encontrou = 0;
+    function markAs(int $str2, string $str3):void{
+        $tarefas = readTasks();
         foreach($tarefas as $chave => $tarefa){
             //Verificação de segurança: garante que o item é mesmo um
             // array antes de testar o id
-            if(is_array($tarefa) && isset($tarefa['id']) && $tarefa['id'] == $str2){
+            if(is_array($tarefa) && isset($tarefa['id']) && $tarefa['id'] === $str2){
                 //Alterar o valor na lista principal
                 $tarefas[$chave]['status'] = $str3;
-                $tarefas[$chave]['updateAt'] = date('d/m/Y H:i:s', time());
-                echo "Status actualizado!\n";
-                $encontrou = 1;
-                break;
+                $tarefas[$chave]['updatedAt'] = date('d/m/Y H:i:s');
+                save($tarefas);
+                echo "Status da tarefa $str2 actualizado!\n";
+                return;
             }
         }
-
-        if($encontrou == 1){
-            save($ficheiro, $tarefas);
-        }else{
-            echo "Item não encontrado";
-        }
+        echo "Item não encontrado";
     }
 
-    function apagar($ficheiro, $str){
-        $tarefas = readTasks($ficheiro);
-        $encontrou = 0;
+    function apagar(int $str):void{
+        $tarefas = readTasks();
         foreach($tarefas as $chave => $tarefa){
             //Verificação de segurança: garante que o item é mesmo um
             // array antes de testar o id
-            if(is_array($tarefa) && isset($tarefa['id']) && $tarefa['id'] == $str){
+            if(is_array($tarefa) && isset($tarefa['id']) && $tarefa['id'] === $str){
                 //Alterar o valor na lista principal
                 unset($tarefas[$chave]);
-        
+                save($tarefas);
+                echo "Tarefa Nº $str apagada.\n";
+                return;
             }
         }
-        save($ficheiro, $tarefas);
+        echo "Tarefa $str não encontrada.\n";
     }
 ?>
